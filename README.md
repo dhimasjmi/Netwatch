@@ -1,6 +1,6 @@
 # NetWatch
 
-Dashboard monitoring dan maintenance komputer di jaringan perusahaan (konsep mirip Veyon, berbasis web).
+Dashboard monitoring komputer dan jaringan perusahaan.
 Terdiri dari dua bagian:
 
 | Bagian | Lokasi | Teknologi | Dipasang di |
