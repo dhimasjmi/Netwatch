@@ -1,0 +1,191 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use NetWatch\Agent\Agent;
+use NetWatch\Agent\Browsing\BrowsingReporter;
+use NetWatch\Agent\Browsing\ConnectionTracker;
+use NetWatch\Agent\Command\CommandExecutor;
+use NetWatch\Agent\Command\ProcessReporter;
+use NetWatch\Agent\Config\AgentConfig;
+use NetWatch\Agent\Enrollment\Enroller;
+use NetWatch\Agent\Http\ApiClient;
+use NetWatch\Agent\Inventory\AssetReporter;
+use NetWatch\Agent\Inventory\InventoryReporter;
+use NetWatch\Agent\Platform\PlatformFactory;
+use NetWatch\Agent\Policy\PolicyApplier;
+use NetWatch\Agent\Support\Logger;
+use NetWatch\Agent\Version;
+use NetWatch\Agent\Winlog\WinlogReporter;
+
+require __DIR__ . '/../src/autoload.php';
+
+if (PHP_SAPI !== 'cli') {
+    exit("Hanya dapat dijalankan dari command line.\n");
+}
+
+const USAGE = <<<'TXT'
+NetWatch Agent
+
+Penggunaan:
+  netwatch-agent enroll --server=URL (--token=TOKEN | --token-file=PATH) [--config=PATH] [--ca-file=PATH] [--allow-insecure-http]
+  netwatch-agent run    [--config=PATH]
+  netwatch-agent clear-policy [--config=PATH]
+  netwatch-agent version
+
+Token pendaftaran sebaiknya dikirim lewat --token-file (berkas dihapus setelah dibaca) atau variabel
+lingkungan NETWATCH_ENROLL_TOKEN agar tidak tercatat di daftar proses.
+
+TXT;
+
+/** @return array<string, string|bool> */
+function parseOptions(array $args): array
+{
+    $options = [];
+
+    foreach ($args as $arg) {
+        if (preg_match('/^--([a-z-]+)(?:=(.*))?$/s', $arg, $m) !== 1) {
+            fwrite(STDERR, "Argumen tidak dikenal: {$arg}\n");
+            exit(2);
+        }
+
+        $options[$m[1]] = $m[2] ?? true;
+    }
+
+    return $options;
+}
+
+function fail(string $message, int $code = 1): never
+{
+    fwrite(STDERR, $message . "\n");
+    exit($code);
+}
+
+/** Token dari berkas (dihapus setelah dibaca), argumen, atau variabel lingkungan. */
+function readEnrollToken(array $options): string
+{
+    if (isset($options['token-file']) && is_string($options['token-file'])) {
+        $path = $options['token-file'];
+
+        if (!is_readable($path)) {
+            fail("Berkas token tidak bisa dibaca: {$path}", 2);
+        }
+
+        $token = trim((string) file_get_contents($path));
+        @unlink($path);
+
+        return $token;
+    }
+
+    return is_string($options['token'] ?? null) ? $options['token'] : (string) getenv('NETWATCH_ENROLL_TOKEN');
+}
+
+/** Paket CA opsional yang dibawa installer (untuk server dengan sertifikat dari CA publik). */
+function bundledCaFile(): ?string
+{
+    $path = dirname(__DIR__) . '/runtime/cacert.pem';
+
+    return is_file($path) ? $path : null;
+}
+
+function policyApplier(AgentConfig $config, string $configPath, \NetWatch\Agent\Platform\PlatformInterface $platform, Logger $logger): PolicyApplier
+{
+    $host = (string) parse_url($config->serverUrl, PHP_URL_HOST);
+
+    return new PolicyApplier($platform, dirname($configPath) . DIRECTORY_SEPARATOR . 'policy-state.json', $host, $logger, null, $config->offlineReleaseSeconds);
+}
+
+$command = $argv[1] ?? 'help';
+$options = parseOptions(array_slice($argv, 2));
+$configPath = is_string($options['config'] ?? null) ? $options['config'] : AgentConfig::defaultPath();
+
+try {
+    switch ($command) {
+        case 'version':
+            echo Version::CURRENT . "\n";
+            break;
+
+        case 'enroll':
+            $token = readEnrollToken($options);
+
+            if (!isset($options['server']) || !is_string($options['server']) || $token === '') {
+                fail("--server dan token pendaftaran wajib diisi.\n\n" . USAGE, 2);
+            }
+
+            $config = new AgentConfig(
+                $options['server'],
+                null,
+                null,
+                is_string($options['ca-file'] ?? null) ? $options['ca-file'] : bundledCaFile(),
+                isset($options['allow-insecure-http']),
+                AgentConfig::defaultLogFile(),
+            );
+
+            $enrolled = (new Enroller(PlatformFactory::create()))->enroll($config, $token);
+            $enrolled->save($configPath);
+            echo "Pendaftaran berhasil. Konfigurasi disimpan di {$configPath}\n";
+            break;
+
+        case 'run':
+            $config = AgentConfig::load($configPath);
+
+            if (!$config->isEnrolled()) {
+                fail('Agent belum terdaftar. Jalankan "enroll" terlebih dahulu.');
+            }
+
+            $logger = new Logger($config->logFile, echoToStderr: isset($options['verbose']));
+            $platform = PlatformFactory::create();
+            $api = new ApiClient($config->serverUrl, $config->apiToken, $config->caFile ?? bundledCaFile(), $config->allowInsecureHttp);
+            $reporter = new ProcessReporter($platform, $api);
+            $serverHost = (string) parse_url($config->serverUrl, PHP_URL_HOST);
+            $browsing = new BrowsingReporter(
+                $platform, $api, $logger,
+                dirname($configPath) . DIRECTORY_SEPARATOR . 'browsing-state.json',
+                new ConnectionTracker($serverHost),
+            );
+            $agent = new Agent($platform, $api, new CommandExecutor($platform, $reporter), $reporter, $logger, policyApplier($config, $configPath, $platform, $logger), $browsing,
+                new InventoryReporter($platform, $api),
+                new WinlogReporter($platform, $api, dirname($configPath) . DIRECTORY_SEPARATOR . 'winlog-state.json'),
+                new AssetReporter($platform, $api),
+            );
+
+            if (function_exists('pcntl_async_signals')) {
+                pcntl_async_signals(true);
+                pcntl_signal(SIGTERM, static fn () => $agent->stop());
+                pcntl_signal(SIGINT, static fn () => $agent->stop());
+            }
+
+            $agent->run();
+            break;
+
+        case 'clear-policy':
+            // Dipanggil saat agent dihapus. Tidak bergantung pada agent.json: berkas itu bisa saja sudah hilang/rusak.
+            $platform = PlatformFactory::create();
+            $logger = new Logger(AgentConfig::defaultLogFile());
+            $stateFile = dirname($configPath) . DIRECTORY_SEPARATOR . 'policy-state.json';
+
+            try {
+                (new PolicyApplier($platform, $stateFile, '', $logger))->clear();
+            } catch (\Throwable $e) {
+                $logger->error('Pembersihan kebijakan gagal: ' . $e->getMessage());
+                fwrite(STDERR, "Pembersihan blokir NetWatch GAGAL: " . $e->getMessage() . "\n"
+                    . "Jalankan install\\windows\\recover-policy.ps1 -Apply sebagai Administrator (periksa dulu tanpa -Apply).\n");
+                exit(1);
+            }
+
+            echo "Kebijakan blokir NetWatch dihapus dan terverifikasi bersih.\n";
+            break;
+
+        default:
+            echo USAGE;
+            exit($command === 'help' ? 0 : 2);
+    }
+} catch (\Throwable $e) {
+    if ($command === 'enroll') {
+        // Installer berjalan tanpa jendela, jadi kegagalan pendaftaran dicatat ke log agar bisa didiagnosis.
+        (new Logger(AgentConfig::defaultLogFile()))->error('Pendaftaran gagal: ' . $e->getMessage());
+    }
+
+    fail('Kesalahan: ' . $e->getMessage());
+}
