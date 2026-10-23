@@ -5,6 +5,7 @@
 @section('main-attrs')data-page="browsing"@endsection
 
 @section('content')
+    @include('monitoring.tabs', ['active' => 'browsing'])
     <div class="page-head">
         <h1>Riwayat browsing</h1>
         <div class="actions"><a class="btn" href="{{ route('browsing.csv', $query) }}">Ekspor CSV</a></div>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\Feature;
 use App\Models\Device;
 use App\Models\DeviceHeartbeat;
 use Carbon\CarbonInterface;
@@ -11,7 +12,7 @@ use Throwable;
 
 final class HeartbeatService
 {
-    public function __construct(private readonly StatusTracker $status, private readonly BandwidthRecorder $bandwidth)
+    public function __construct(private readonly StatusTracker $status, private readonly BandwidthRecorder $bandwidth, private readonly FeatureFlags $features)
     {
     }
 
@@ -59,6 +60,10 @@ final class HeartbeatService
     /** Kegagalan mencatat bandwidth tidak boleh membuat heartbeat (dan status online) ikut gagal. */
     private function recordBandwidthSafely(Device $device, array $interfaces, CarbonInterface $now): void
     {
+        if (! $this->features->enabled(Feature::Bandwidth)) {
+            return;
+        }
+
         try {
             $this->bandwidth->record($device, $interfaces, $now);
         } catch (Throwable $e) {

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Agent;
 
+use App\Enums\Feature;
 use App\Http\Controllers\Controller;
+use App\Services\FeatureFlags;
 use App\Http\Middleware\AuthenticateAgent;
 use App\Http\Requests\Api\HeartbeatRequest;
 use App\Models\DeviceCommand;
@@ -20,6 +22,7 @@ final class HeartbeatController extends Controller
         HeartbeatService $heartbeats,
         CommandService $commands,
         PolicySync $policies,
+        FeatureFlags $features,
     ): JsonResponse {
         $device = AuthenticateAgent::deviceFrom($request);
         $validated = $request->validated();
@@ -32,8 +35,8 @@ final class HeartbeatController extends Controller
             'server_time' => now()->toIso8601String(),
             'heartbeat_interval' => config('netwatch.heartbeat_interval'),
             'process_snapshot_interval' => config('netwatch.process_snapshot_interval'),
-            'browsing_enabled' => (bool) config('netwatch.browsing.enabled'),
-            'winlog_enabled' => (bool) config('netwatch.winlog.enabled'),
+            'browsing_enabled' => $features->enabled(Feature::Browsing),
+            'winlog_enabled' => $features->enabled(Feature::Winlog),
             ...($policy === null ? [] : ['policy' => $policy]),
             'commands' => $commands->claimPending($device)
                 ->map(static fn (DeviceCommand $c): array => [

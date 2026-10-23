@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Enums\Feature;
+use App\Services\FeatureFlags;
 use App\Services\TargetMonitorService;
 use Illuminate\Console\Command;
 
@@ -13,9 +15,9 @@ final class PingTargetsCommand extends Command
 
     protected $description = 'Ping/cek port perangkat jaringan yang dipantau dari server (Network Operations Center)';
 
-    public function handle(TargetMonitorService $monitor): int
+    public function handle(TargetMonitorService $monitor, FeatureFlags $features): int
     {
-        if (! config('netwatch.monitor.enabled')) {
+        if (! $features->enabled(Feature::Network)) {
             return self::SUCCESS;
         }
 

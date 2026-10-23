@@ -170,3 +170,6 @@ Setiap fase diakhiri uji di PC/perangkat jaringan pilot dan rilis yang bisa lang
 | Tiket bantuan IT + penilaian layanan (shortcut Desktop, kode sekali pakai via email/popup, laporan), lihat docs/TIKET.md | Selesai (server + installer); belum diuji di PC sungguhan |
 | Network Operations Center: ping/cek port perangkat jaringan tanpa agent, status Online/Lambat/Offline, event + notifikasi, lihat docs/NOC.md | Selesai (server); belum diuji di jaringan sungguhan |
 | Pengurangan data browsing (rollup harian, retensi berjenjang, domain diabaikan), lihat docs/BROWSING.md | Selesai |
+
+## Update 22 Okt: Menu Monitoring terpadu + saklar fitur
+Selesai: tab Perangkat/Bandwidth/Browsing, halaman Bandwidth fleet & Browsing interaktif, panel Fitur admin. Lihat `docs/MONITORING.md`. Belum: SNMP, syslog/trap, 2FA, update agent bertanda tangan, CI, paket produksi Linux.

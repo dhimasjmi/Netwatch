@@ -17,11 +17,11 @@
         </h1>
         <div class="actions">
             <a class="btn" href="{{ route('devices.uptime', $device) }}">Riwayat uptime</a>
-            <a class="btn" href="{{ route('devices.bandwidth', $device) }}">Bandwidth</a>
+            @feature('bandwidth')<a class="btn" href="{{ route('devices.bandwidth', $device) }}">Bandwidth</a>@endfeature
             <a class="btn" href="{{ route('devices.metrics', $device) }}">Tren CPU/RAM/Disk</a>
-            @can('manage-fleet')<a class="btn" href="{{ route('devices.assets', $device) }}">Inventaris</a>@endcan
-            @can('manage-fleet')<a class="btn" href="{{ route('devices.inventory', $device) }}">Port &amp; layanan</a>@endcan
-            @can('manage-fleet')<a class="btn" href="{{ route('browsing.index', ['device' => $device->public_id]) }}">Browsing</a>@endcan
+            @can('manage-fleet')@feature('inventory')<a class="btn" href="{{ route('devices.assets', $device) }}">Inventaris</a>@endfeature @endcan
+            @can('manage-fleet')@feature('inventory')<a class="btn" href="{{ route('devices.inventory', $device) }}">Port &amp; layanan</a>@endfeature @endcan
+            @can('manage-fleet')@feature('browsing')<a class="btn" href="{{ route('devices.browsing', $device) }}">Browsing</a>@endfeature @endcan
             <a class="btn" href="{{ route('events.index', ['device' => $device->public_id, 'preset' => '7d']) }}">Event</a>
             @can('run-commands')
                 <button type="button" class="btn" data-command="refresh_processes">Muat ulang proses</button>

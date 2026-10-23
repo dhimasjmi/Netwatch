@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Middleware\AuthenticateAgent;
 use App\Http\Middleware\EnsureActiveUser;
+use App\Http\Middleware\RequireFeature;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'agent' => AuthenticateAgent::class,
             'active' => EnsureActiveUser::class,
+            'feature' => RequireFeature::class,
         ]);
         // Bila di belakang Nginx/Caddy, isi NETWATCH_TRUSTED_PROXIES (IP proxy, pisahkan koma) agar IP klien dan skema HTTPS terbaca benar.
         $trustedProxies = array_filter(array_map('trim', explode(',', (string) env('NETWATCH_TRUSTED_PROXIES', ''))));

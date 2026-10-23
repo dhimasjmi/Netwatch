@@ -58,7 +58,6 @@ final class NetworkMonitorController extends Controller
             'kinds' => TargetKind::cases(),
             'filter' => $filter,
             'search' => $search,
-            'monitorEnabled' => (bool) config('netwatch.monitor.enabled'),
         ]);
     }
 

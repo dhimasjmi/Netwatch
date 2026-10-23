@@ -5,6 +5,7 @@
 @section('main-attrs')data-page="devices-index" data-live-url="{{ route('devices.live') }}"@endsection
 
 @section('content')
+    @include('monitoring.tabs', ['active' => 'devices'])
     <h1>Perangkat</h1>
 
     <form method="GET" class="filters">

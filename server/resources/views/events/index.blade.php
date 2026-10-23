@@ -69,7 +69,7 @@
                             @if ($event->user) · Oleh: {{ $event->user->name }} @endif
                             @if ($event->device) · <a href="{{ route('devices.show', $event->device) }}">Buka perangkat</a> ·
                                 <a href="{{ route('devices.uptime', $event->device) }}">Riwayat uptime</a> ·
-                                <a href="{{ route('devices.bandwidth', $event->device) }}">Bandwidth</a>
+                                @feature('bandwidth')<a href="{{ route('devices.bandwidth', $event->device) }}">Bandwidth</a>@endfeature
                             @endif
                         </p>
                         @if ($event->details)

@@ -269,6 +269,17 @@
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') navMenu.open = false; });
     }
 
+
+    // Ambil ulang halaman ini dan ganti isi <main> (HTML dari server sendiri; diurai sebagai DOM, bukan innerHTML).
+    async function refreshInPlace(current) {
+        try {
+            const response = await fetch(window.location.href, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
+            if (!response.ok || response.redirected) { window.location.reload(); return; }
+            const next = new DOMParser().parseFromString(await response.text(), 'text/html').getElementById('content');
+            if (next) current.replaceChildren(...[...next.childNodes].map((n) => document.importNode(n, true)));
+        } catch { /* coba lagi pada siklus berikutnya */ }
+    }
+
     if (main?.dataset.page === 'devices-index') initDeviceIndex();
     if (main?.dataset.page === 'devices-show') initDeviceShow();
     // Halaman server-rendered bertanda data-autoreload (dashboard, event, blokir) dimuat ulang berkala,
@@ -291,7 +302,9 @@
                 if (note) note.textContent = 'Pembaruan otomatis ditunda karena Anda sedang mengisi formulir.';
                 return;
             }
-            window.location.reload();
+            // Reload menutup layar penuh; saat mode monitor (kiosk), isi halaman diganti tanpa reload.
+            if (document.documentElement.classList.contains('kiosk')) refreshInPlace(main);
+            else window.location.reload();
         }, seconds * 1000);
     }
 })();

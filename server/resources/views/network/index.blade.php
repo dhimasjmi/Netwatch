@@ -5,6 +5,7 @@
 @section('main-attrs')data-page="network" data-autoreload data-refresh-seconds="30"@endsection
 
 @section('content')
+    @include('monitoring.tabs', ['active' => 'network'])
     <div class="page-head">
         <div>
             <h1>Network Operations Center</h1>
@@ -13,10 +14,6 @@
         <span class="badge badge-ok">LIVE</span>
     </div>
     <p id="refresh-note" class="muted" hidden></p>
-
-    @unless ($monitorEnabled)
-        <div class="alert alert-error" role="alert">Pemantauan dimatikan (NETWATCH_MONITOR_ENABLED=false). Status di bawah tidak diperbarui.</div>
-    @endunless
 
     <section class="cards">
         <div class="card"><div class="card-label">Total perangkat</div><div class="card-value">{{ $total }}</div><div class="muted">Semua target pantau</div></div>
@@ -77,8 +74,7 @@
 
                     @can('manage-fleet')
                         <div class="noc-actions">
-                            <form method="POST" action="{{ route('network.ping', $target) }}">@csrf<button type="submit" class="btn btn-small">Ping sekarang</button></form>
-                            <form method="POST" action="{{ route('network.toggle', $target) }}">@csrf<button type="submit" class="btn btn-small">{{ $target->is_enabled ? 'Hentikan' : 'Aktifkan' }}</button></form>
+                            <form method="POST" action="{{ route('network.toggle', $target) }}">@csrf<button type="submit" class="btn btn-small {{ $target->is_enabled ? 'btn-stop' : 'btn-start' }}" title="{{ $target->is_enabled ? 'Hentikan pemantauan' : 'Mulai pemantauan' }}">{{ $target->is_enabled ? '■ Stop' : '▶ Start' }}</button></form>
                         </div>
                         <details class="noc-edit">
                             <summary>Ubah / hapus</summary>
@@ -99,6 +95,7 @@
     @endif
 
     @can('manage-fleet')
+        <div class="kiosk-hide">
         <h2>Tambah target</h2>
         <p class="muted">Hanya alamat IP internal. Pilih "Port TCP" untuk perangkat yang memblokir ping (mis. web admin printer di port 80/443).</p>
         <form method="POST" action="{{ route('network.store') }}" class="filters">
@@ -106,5 +103,6 @@
             @include('network.partials.fields', ['target' => null, 'kinds' => $kinds])
             <button type="submit" class="btn btn-primary">Tambah</button>
         </form>
+        </div>
     @endcan
 @endsection

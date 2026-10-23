@@ -44,6 +44,14 @@ final class DateRange
         return self::bounded($now->subHours(self::PRESET_HOURS[self::DEFAULT_PRESET]), $now, $timezone, $maxDays);
     }
 
+    /** Rentang "N detik terakhir" (mis. 1 jam) untuk halaman monitoring yang lebih halus dari preset harian. */
+    public static function lastSeconds(int $seconds, string $timezone, int $maxDays = 366): self
+    {
+        $now = CarbonImmutable::now();
+
+        return self::bounded($now->subSeconds(max(60, $seconds)), $now, $timezone, $maxDays);
+    }
+
     public function seconds(): int
     {
         return max(0, $this->to->getTimestamp() - $this->from->getTimestamp());

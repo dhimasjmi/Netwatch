@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Agent;
 
+use App\Enums\Feature;
 use App\Http\Controllers\Controller;
+use App\Services\FeatureFlags;
 use App\Http\Middleware\AuthenticateAgent;
 use App\Http\Requests\Api\BrowsingRequest;
 use App\Services\BrowsingRecorder;
@@ -12,10 +14,10 @@ use Illuminate\Http\JsonResponse;
 
 final class BrowsingController extends Controller
 {
-    public function __invoke(BrowsingRequest $request, BrowsingRecorder $recorder): JsonResponse
+    public function __invoke(BrowsingRequest $request, BrowsingRecorder $recorder, FeatureFlags $features): JsonResponse
     {
         // Saklar dimatikan di server: data dibuang tanpa galat agar agent lama tidak mengulang kiriman.
-        if (! config('netwatch.browsing.enabled')) {
+        if (! $features->enabled(Feature::Browsing)) {
             return response()->json(['stored' => 0, 'rejected' => 0]);
         }
 

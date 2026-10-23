@@ -8,11 +8,14 @@ use App\Alerts\MailChannel;
 use App\Alerts\TelegramChannel;
 use App\Models\User;
 use App\Services\AlertDispatcher;
+use App\Enums\Feature;
+use App\Services\FeatureFlags;
 use App\Services\Probe\SystemTargetProber;
 use App\Services\Probe\TargetProber;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -25,6 +28,7 @@ final class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(TargetProber::class, SystemTargetProber::class);
+        $this->app->singleton(FeatureFlags::class);
 
         $this->app->bind(AlertDispatcher::class, fn ($app): AlertDispatcher => new AlertDispatcher([
             $app->make(TelegramChannel::class),
@@ -49,6 +53,9 @@ final class AppServiceProvider extends ServiceProvider
             /** @var Carbon $this */
             return $this->copy()->timezone((string) config('netwatch.display_timezone'))->format('d M Y H:i:s');
         });
+
+        // @feature('browsing') ... @endfeature di view.
+        Blade::if('feature', fn (string $feature): bool => $this->app->make(FeatureFlags::class)->enabled(Feature::from($feature)));
 
         $this->registerGates();
         $this->registerRateLimiters();

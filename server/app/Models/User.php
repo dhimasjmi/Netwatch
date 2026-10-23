@@ -15,6 +15,7 @@ use Illuminate\Notifications\Notifiable;
  * @property string $email
  * @property UserRole $role
  * @property bool $is_active
+ * @property list<string>|null $dashboard_widgets
  */
 class User extends Authenticatable
 {
@@ -34,6 +35,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'role' => UserRole::class,
             'is_active' => 'boolean',
+            'dashboard_widgets' => 'array',
         ];
     }
 }

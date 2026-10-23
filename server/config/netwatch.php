@@ -105,6 +105,9 @@ return [
         'enabled' => (bool) env('NETWATCH_WINLOG_ENABLED', false),
     ],
 
+    // Lama (detik) hasil halaman Monitoring (bandwidth/browsing) disimpan, agar banyak penonton dengan auto-refresh cepat tidak membebani database. 0 = tanpa cache.
+    'fleet_cache_seconds' => (int) env('NETWATCH_FLEET_CACHE', 4),
+
     'force_https' => (bool) env('NETWATCH_FORCE_HTTPS', true),
 
     // Zona waktu untuk tampilan dashboard (data tetap disimpan dalam UTC).

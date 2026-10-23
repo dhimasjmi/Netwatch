@@ -26,7 +26,7 @@ final class NetworkMonitorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['netwatch.monitor.enabled' => true, 'netwatch.monitor.fail_threshold' => 2, 'netwatch.monitor.warn_latency_ms' => 150]);
+        config(['netwatch.monitor.enabled' => true, 'netwatch.monitor.allow_public' => false, 'netwatch.monitor.fail_threshold' => 2, 'netwatch.monitor.warn_latency_ms' => 150]);
 
         $this->app->instance(TargetProber::class, new class($this) implements TargetProber
         {
@@ -127,12 +127,12 @@ final class NetworkMonitorTest extends TestCase
         $this->target('Core Switch', '192.168.1.1', ['status' => 'online', 'latency_ms' => 2.0, 'last_checked_at' => now()]);
 
         $this->actingAs($this->user(UserRole::Viewer))->get(route('network.index'))
-            ->assertOk()->assertSee('Network Operations Center')->assertSee('Core Switch')->assertSee('192.168.1.1')->assertDontSee('Ping sekarang');
+            ->assertOk()->assertSee('Network Operations Center')->assertSee('Core Switch')->assertSee('192.168.1.1')->assertDontSee('■ Stop');
 
         $this->post(route('network.store'), $this->form())->assertForbidden();
         $this->actingAs($this->user(UserRole::Operator))->post(route('network.store'), $this->form())->assertForbidden();
 
-        $this->actingAs($this->user(UserRole::Admin))->get(route('network.index'))->assertOk()->assertSee('Ping sekarang')->assertSee('Tambah target');
+        $this->actingAs($this->user(UserRole::Admin))->get(route('network.index'))->assertOk()->assertSee('■ Stop')->assertSee('Tambah target');
         $this->assertSame(0, MonitorTarget::query()->where('name', 'Baru')->count());
     }
 
