@@ -41,7 +41,7 @@
         @endcan
         @can('manage-fleet')
             <details class="nav-menu">
-                <summary @class(['active' => request()->routeIs('groups.*', 'tokens.*', 'users.*', 'policies.*', 'alerts.*', 'assets.*', 'features.*', 'security.*', 'audit.*')])>Administrasi</summary>
+                <summary @class(['active' => request()->routeIs('groups.*', 'tokens.*', 'users.*', 'policies.*', 'alerts.*', 'assets.*', 'features.*', 'database.*', 'security.*', 'audit.*')])>Administrasi</summary>
                 <div class="nav-menu-list">
             <a href="{{ route('groups.index') }}" @class(['active' => request()->routeIs('groups.*')]) @if(request()->routeIs('groups.*')) aria-current="page" @endif>Grup</a>
             <a href="{{ route('tokens.index') }}" @class(['active' => request()->routeIs('tokens.*')]) @if(request()->routeIs('tokens.*')) aria-current="page" @endif>Token Pendaftaran</a>
@@ -54,6 +54,7 @@
                 <a href="{{ route('assets.index') }}" @class(['active' => request()->routeIs('assets.*')]) @if(request()->routeIs('assets.*')) aria-current="page" @endif>Inventaris</a>
             @endfeature
             <a href="{{ route('features.index') }}" @class(['active' => request()->routeIs('features.*')]) @if(request()->routeIs('features.*')) aria-current="page" @endif>Fitur</a>
+            <a href="{{ route('database.index') }}" @class(['active' => request()->routeIs('database.*')]) @if(request()->routeIs('database.*')) aria-current="page" @endif>Database &amp; Backup</a>
             <a href="{{ route('security.index') }}" @class(['active' => request()->routeIs('security.*')]) @if(request()->routeIs('security.*')) aria-current="page" @endif>Keamanan</a>
             <a href="{{ route('audit.index') }}" @class(['active' => request()->routeIs('audit.*')]) @if(request()->routeIs('audit.*')) aria-current="page" @endif>Audit Log</a>
                 </div>

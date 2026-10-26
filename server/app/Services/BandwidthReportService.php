@@ -7,8 +7,8 @@ namespace App\Services;
 use App\Models\Device;
 use App\Models\DeviceInterface;
 use App\Support\BandwidthMath;
+use App\Support\BandwidthSamples;
 use App\Support\DateRange;
-use Illuminate\Support\Facades\DB;
 
 final class BandwidthReportService
 {
@@ -23,9 +23,8 @@ final class BandwidthReportService
         $interfaces = DeviceInterface::query()->where('device_id', $device->id)->orderBy('name')->get();
 
         // $bucket adalah integer dari daftar tetap, aman disisipkan langsung (menghindari masalah tipe parameter di PostgreSQL).
-        $rows = DB::table('interface_samples')
+        $rows = BandwidthSamples::between($range->from, $range->to)
             ->whereIn('device_interface_id', $interfaces->modelKeys())
-            ->whereBetween('sampled_at', [$range->from, $range->to])
             ->selectRaw("device_interface_id, floor(extract(epoch from sampled_at) / {$bucket})::bigint * {$bucket} AS bucket_ts, sum(rx_bytes)::bigint AS rx, sum(tx_bytes)::bigint AS tx, sum(interval_seconds)::bigint AS covered")
             ->groupBy('device_interface_id', 'bucket_ts')
             ->orderBy('bucket_ts')

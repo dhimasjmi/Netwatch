@@ -26,6 +26,7 @@ use App\Http\Controllers\Web\EnrollmentTokenController;
 use App\Http\Controllers\Web\EventController;
 use App\Http\Controllers\Web\BrowsingMonitorController;
 use App\Http\Controllers\Web\DeviceBrowsingController;
+use App\Http\Controllers\Web\DatabaseHealthController;
 use App\Http\Controllers\Web\FeatureController;
 use App\Http\Controllers\Web\FleetBandwidthController;
 use App\Http\Controllers\Web\NetworkMonitorController;
@@ -116,6 +117,7 @@ Route::middleware(['auth', 'active'])->group(function (): void {
             Route::get('/monitoring/browsing/data', [BrowsingMonitorController::class, 'data'])->name('monitor.browsing.data');
         });
 
+        Route::get('/database', DatabaseHealthController::class)->name('database.index');
         Route::get('/features', [FeatureController::class, 'index'])->name('features.index');
         Route::patch('/features/{feature}', [FeatureController::class, 'update'])->name('features.update');
 

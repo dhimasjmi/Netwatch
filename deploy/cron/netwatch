@@ -1,0 +1,3 @@
+# /etc/cron.d/netwatch  (izin 644, pemilik root)
+# Menjalankan penjadwal Laravel tiap menit sebagai www-data: cek status, ping, alert, rollup, prune, backup.
+* * * * * www-data cd /var/www/netwatch/server && /usr/bin/php artisan schedule:run >> /dev/null 2>&1

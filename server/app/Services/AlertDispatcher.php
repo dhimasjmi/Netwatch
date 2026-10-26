@@ -112,6 +112,10 @@ final class AlertDispatcher
             return ['kind' => 'other', 'text' => '🎫 '.$event->message];
         }
 
+        if ($event->code === 'backup.failed') {
+            return ['kind' => 'other', 'text' => '💾 '.$event->message];
+        }
+
         if ($event->code === 'target.offline') {
             return ['kind' => 'other', 'text' => '🔴 '.$event->message];
         }

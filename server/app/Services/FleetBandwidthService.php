@@ -6,10 +6,10 @@ namespace App\Services;
 
 use App\Models\Device;
 use App\Support\BandwidthMath;
+use App\Support\BandwidthSamples;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Bandwidth seluruh atau sebagian perangkat: ringkasan (KPI), tren gabungan, dan tabel per perangkat dengan pagination.
@@ -30,6 +30,9 @@ final class FleetBandwidthService
     public function report(array $f): array
     {
         $ttl = (int) config('netwatch.fleet_cache_seconds');
+        if ($ttl > 0 && in_array($f['window'], ['24h', '7d'], true)) {
+            $ttl = max($ttl, 30); // rentang panjang berat dihitung ulang dan jarang berubah
+        }
 
         return $ttl > 0 ? Cache::remember('fleet-bw:'.md5(serialize($f)), $ttl, fn (): array => $this->build($f)) : $this->build($f);
     }
@@ -93,10 +96,9 @@ final class FleetBandwidthService
     private function trend(Builder $scopeIds, CarbonImmutable $from, CarbonImmutable $to, int $bucket): array
     {
         // $bucket berasal dari daftar tetap (integer), aman disisipkan langsung.
-        $rows = DB::table('interface_samples as s')
+        $rows = BandwidthSamples::between($from, $to)
             ->join('device_interfaces as i', 'i.id', '=', 's.device_interface_id')
             ->whereIn('i.device_id', $scopeIds->toBase())
-            ->whereBetween('s.sampled_at', [$from, $to])
             ->selectRaw("floor(extract(epoch from s.sampled_at) / {$bucket})::bigint * {$bucket} AS ts, sum(s.rx_bytes)::bigint AS rx, sum(s.tx_bytes)::bigint AS tx")
             ->groupBy('ts')->orderBy('ts')->get();
 
@@ -119,10 +121,9 @@ final class FleetBandwidthService
      */
     private function nowRates(Builder $scopeIds, CarbonImmutable $to): array
     {
-        $row = DB::table('interface_samples as s')
+        $row = BandwidthSamples::between($to->subSeconds(self::NOW_SECONDS), $to)
             ->join('device_interfaces as i', 'i.id', '=', 's.device_interface_id')
             ->whereIn('i.device_id', $scopeIds->toBase())
-            ->whereBetween('s.sampled_at', [$to->subSeconds(self::NOW_SECONDS), $to])
             ->selectRaw('coalesce(sum(s.rx_bytes), 0)::bigint AS rx, coalesce(sum(s.tx_bytes), 0)::bigint AS tx, count(DISTINCT i.device_id) AS reporting')
             ->first();
 
@@ -134,64 +135,78 @@ final class FleetBandwidthService
     }
 
     /**
+     * Total per perangkat dihitung dengan SATU pemindaian sampel (hasilnya satu baris per perangkat); penyaringan,
+     * pengurutan, dan halaman dikerjakan di memori. Jauh lebih murah daripada tiga kali agregasi pada tabel besar.
+     *
      * @param  array{window: string, group: int|null, q: string|null, sort: string, dir: string, page: int, per_page: int, devices: list<string>, only: bool}  $f
      * @param  list<int>  $selected
      * @return array<string, mixed>
      */
     private function table(array $f, CarbonImmutable $from, CarbonImmutable $to, int $seconds, array $selected, CarbonImmutable $threshold): array
     {
-        $agg = DB::table('interface_samples as s')
+        $totals = BandwidthSamples::between($from, $to)
             ->join('device_interfaces as i', 'i.id', '=', 's.device_interface_id')
-            ->whereBetween('s.sampled_at', [$from, $to])
             ->groupBy('i.device_id')
-            ->selectRaw('i.device_id, sum(s.rx_bytes)::bigint AS rx, sum(s.tx_bytes)::bigint AS tx');
+            ->selectRaw('i.device_id, sum(s.rx_bytes)::bigint AS rx, sum(s.tx_bytes)::bigint AS tx')
+            ->get()->keyBy('device_id');
 
-        $term = $f['q'] !== null ? trim($f['q']) : '';
-        $filtered = $this->base($f['group'])
-            ->leftJoinSub($agg, 'a', 'a.device_id', '=', 'devices.id')
+        $term = $f['q'] !== null ? mb_strtolower(trim($f['q'])) : '';
+        $devices = $this->base($f['group'])
             ->when($f['only'] && $selected !== [], fn (Builder $q) => $q->whereIn('devices.id', $selected))
-            ->when($term !== '', function (Builder $q) use ($term): void {
-                $like = '%'.addcslashes(mb_strtolower($term), '\\%_').'%';
-                $q->where(fn (Builder $w) => $w->whereRaw('lower(coalesce(devices.display_name, devices.hostname)) LIKE ?', [$like])->orWhereRaw('devices.ip_address::text LIKE ?', [$like]));
-            });
+            ->get(['devices.id', 'devices.public_id', 'devices.hostname', 'devices.display_name', 'devices.ip_address', 'devices.last_seen_at'])
+            ->filter(fn (Device $d): bool => $term === '' || str_contains(mb_strtolower($d->displayLabel()), $term) || str_contains(mb_strtolower((string) $d->ip_address), $term))
+            ->map(function (Device $d) use ($totals): array {
+                $t = $totals->get($d->id);
 
-        $maxTotal = (int) (clone $filtered)->toBase()->selectRaw('coalesce(max(coalesce(a.rx, 0) + coalesce(a.tx, 0)), 0) AS m')->value('m');
+                return ['device' => $d, 'rx' => (int) ($t->rx ?? 0), 'tx' => (int) ($t->tx ?? 0)];
+            })->values();
 
-        $direction = $f['dir'] === 'asc' ? 'asc' : 'desc';
-        $order = match ($f['sort']) {
-            'name' => 'lower(coalesce(devices.display_name, devices.hostname))',
-            'ip' => 'devices.ip_address::text',
-            'rx' => 'coalesce(a.rx, 0)',
-            'tx' => 'coalesce(a.tx, 0)',
-            'last_seen' => 'devices.last_seen_at',
-            default => 'coalesce(a.rx, 0) + coalesce(a.tx, 0)',
+        $maxTotal = (int) $devices->max(fn (array $r): int => $r['rx'] + $r['tx']);
+        $sign = $f['dir'] === 'asc' ? 1 : -1;
+        $key = fn (array $r): int|string|float => match ($f['sort']) {
+            'name' => mb_strtolower($r['device']->displayLabel()),
+            'ip' => (string) $r['device']->ip_address,
+            'rx' => $r['rx'],
+            'tx' => $r['tx'],
+            'last_seen' => $r['device']->last_seen_at?->getTimestamp() ?? 0,
+            default => $r['rx'] + $r['tx'],
         };
 
-        $page = $filtered
-            ->selectRaw('devices.id, devices.public_id, devices.hostname, devices.display_name, devices.ip_address, devices.last_seen_at, coalesce(a.rx, 0) AS rx, coalesce(a.tx, 0) AS tx')
-            ->orderByRaw("{$order} {$direction} NULLS LAST")->orderBy('devices.id')
-            ->paginate($f['per_page'], ['*'], 'page', $f['page']);
+        $sorted = $devices->all();
+        usort($sorted, function (array $a, array $b) use ($key, $sign, $f): int {
+            if ($f['sort'] === 'last_seen') { // belum pernah terlihat selalu di akhir
+                $na = $a['device']->last_seen_at === null;
+                $nb = $b['device']->last_seen_at === null;
+                if ($na !== $nb) {
+                    return $na ? 1 : -1;
+                }
+            }
 
+            return ($sign * ($key($a) <=> $key($b))) ?: ($a['device']->id <=> $b['device']->id);
+        });
+
+        $total = count($sorted);
+        $lastPage = max(1, (int) ceil($total / $f['per_page']));
+        $page = $f['page']; // halaman di luar batas = kosong; tampilan akan melompat ke halaman terakhir
         $rows = [];
-        foreach ($page->items() as $device) {
-            $rx = (int) $device->getAttribute('rx');
-            $tx = (int) $device->getAttribute('tx');
+        foreach (array_slice($sorted, ($page - 1) * $f['per_page'], $f['per_page']) as $r) {
+            $device = $r['device'];
             $rows[] = [
                 'id' => $device->public_id,
                 'name' => $device->displayLabel(),
                 'ip' => $device->ip_address,
                 'online' => $device->last_seen_at !== null && $device->last_seen_at->gte($threshold),
                 'last_seen' => $device->last_seen_at?->getTimestamp(),
-                'rx_bps' => (int) round(BandwidthMath::bitsPerSecond($rx, $seconds)),
-                'tx_bps' => (int) round(BandwidthMath::bitsPerSecond($tx, $seconds)),
-                'rx_bytes' => $rx,
-                'tx_bytes' => $tx,
-                'total_bytes' => $rx + $tx,
-                'usage_pct' => $maxTotal > 0 ? (int) round(($rx + $tx) * 100 / $maxTotal) : 0,
+                'rx_bps' => (int) round(BandwidthMath::bitsPerSecond($r['rx'], $seconds)),
+                'tx_bps' => (int) round(BandwidthMath::bitsPerSecond($r['tx'], $seconds)),
+                'rx_bytes' => $r['rx'],
+                'tx_bytes' => $r['tx'],
+                'total_bytes' => $r['rx'] + $r['tx'],
+                'usage_pct' => $maxTotal > 0 ? (int) round(($r['rx'] + $r['tx']) * 100 / $maxTotal) : 0,
                 'url' => route('devices.bandwidth', $device),
             ];
         }
 
-        return ['rows' => $rows, 'page' => $page->currentPage(), 'per_page' => $page->perPage(), 'total' => $page->total(), 'last_page' => $page->lastPage()];
+        return ['rows' => $rows, 'page' => $page, 'per_page' => $f['per_page'], 'total' => $total, 'last_page' => $lastPage];
     }
 }

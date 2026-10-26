@@ -11,22 +11,22 @@ use App\Models\DeviceCommand;
 use App\Models\DeviceHeartbeat;
 use App\Models\DeviceStatusHistory;
 use App\Models\Event;
-use App\Models\InterfaceSample;
 use App\Models\MonitorTargetCheck;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 
 final class RetentionService
 {
     private const DELETE_CHUNK = 10_000;
 
-    public function __construct(private readonly BrowsingRollup $rollup)
+    public function __construct(private readonly BrowsingRollup $rollup, private readonly BandwidthRollup $bandwidthRollup)
     {
     }
 
     /**
      * Hapus data lama sesuai config('netwatch.retention').
      *
-     * @return array{heartbeats: int, commands: int, audit_logs: int, status_history: int, bandwidth: int, events: int, browsing: int, browsing_daily: int, monitor_checks: int}
+     * @return array{heartbeats: int, commands: int, audit_logs: int, status_history: int, bandwidth: int, bandwidth_hourly: int, events: int, browsing: int, browsing_daily: int, monitor_checks: int}
      */
     public function prune(): array
     {
@@ -36,9 +36,9 @@ final class RetentionService
             'heartbeats' => $this->deleteInChunks(
                 DeviceHeartbeat::query()->where('recorded_at', '<', now()->subDays($retention['heartbeats_days']))
             ),
-            'bandwidth' => $this->deleteInChunks(
-                InterfaceSample::query()->where('sampled_at', '<', now()->subDays($retention['bandwidth_days']))
-            ),
+            // Sampel mentah dirangkum per jam sebelum dihapus; ringkasan per jam disimpan jauh lebih lama.
+            'bandwidth' => $this->bandwidthRollup->run()['deleted'],
+            'bandwidth_hourly' => $this->bandwidthRollup->pruneHourly(CarbonImmutable::now()),
             // Data mentah dirangkum menjadi ringkasan harian sebelum dihapus; ringkasan disimpan jauh lebih lama.
             'browsing' => $this->rollup->run(now()->subDays($retention['browsing_days']))['deleted'],
             'browsing_daily' => $this->deleteInChunks(

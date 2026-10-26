@@ -26,7 +26,9 @@ return [
         'heartbeats_days' => (int) env('NETWATCH_RETENTION_HEARTBEATS', 14),
         // Snapshot proses besar: simpan hanya N terakhir per perangkat, bukan berdasarkan hari.
         'snapshots_keep' => (int) env('NETWATCH_SNAPSHOTS_KEEP', 12),
-        'bandwidth_days' => (int) env('NETWATCH_RETENTION_BANDWIDTH', 90),
+        // Sampel bandwidth mentah (tiap heartbeat) hanya disimpan beberapa hari; setelahnya dirangkum per jam (ringkasan disimpan bandwidth_days).
+        'bandwidth_raw_days' => (int) env('NETWATCH_RETENTION_BANDWIDTH_RAW', 3),
+        'bandwidth_days' => (int) env('NETWATCH_RETENTION_BANDWIDTH', 365),
         'commands_days' => (int) env('NETWATCH_RETENTION_COMMANDS', 90),
         // Data browsing mentah (URL dan jam persis) lalu dirangkum per hari; ringkasan disimpan lebih lama.
         'browsing_days' => (int) env('NETWATCH_RETENTION_BROWSING', 14),
@@ -60,7 +62,7 @@ return [
     // Notifikasi (dikirim oleh `netwatch:send-alerts` tiap menit). Kosongkan token/alamat untuk menonaktifkan saluran itu.
     'alerts' => [
         'enabled' => (bool) env('NETWATCH_ALERTS_ENABLED', false),
-        'codes' => ['device.offline', 'device.online', 'alert.firing', 'alert.resolved', 'ticket.created', 'target.offline', 'target.online'],
+        'codes' => ['device.offline', 'device.online', 'alert.firing', 'alert.resolved', 'ticket.created', 'target.offline', 'target.online', 'backup.failed'],
         // Event yang lebih tua dari ini (detik) tidak lagi dikirim, mis. setelah notifikasi lama tidak aktif.
         'max_age_seconds' => (int) env('NETWATCH_ALERT_MAX_AGE', 3600),
         // Bila sebanyak ini perangkat offline dalam satu kiriman, diringkas menjadi satu pesan.
@@ -107,6 +109,27 @@ return [
 
     // Lama (detik) hasil halaman Monitoring (bandwidth/browsing) disimpan, agar banyak penonton dengan auto-refresh cepat tidak membebani database. 0 = tanpa cache.
     'fleet_cache_seconds' => (int) env('NETWATCH_FLEET_CACHE', 4),
+
+    // Backup database (pg_dump) oleh `netwatch:backup`, terjadwal harian. Hasil: berkas .dump + .sha256 di folder `path`.
+    'backup' => [
+        'enabled' => (bool) env('NETWATCH_BACKUP_ENABLED', true),
+        'path' => env('NETWATCH_BACKUP_PATH'),          // kosong = storage/app/backups; sebaiknya disk/folder lain dari database
+        'copy_to' => env('NETWATCH_BACKUP_COPY_TO'),    // salinan kedua (share jaringan/disk eksternal); kosong = tidak ada
+        'pg_dump' => env('NETWATCH_PG_DUMP', 'pg_dump'),
+        'pg_restore' => env('NETWATCH_PG_RESTORE', 'pg_restore'),
+        'keep_daily' => (int) env('NETWATCH_BACKUP_KEEP_DAILY', 7),
+        'keep_weekly' => (int) env('NETWATCH_BACKUP_KEEP_WEEKLY', 4),
+        'keep_monthly' => (int) env('NETWATCH_BACKUP_KEEP_MONTHLY', 6),
+        'min_free_mb' => (int) env('NETWATCH_BACKUP_MIN_FREE_MB', 2048),
+        'timeout_seconds' => (int) env('NETWATCH_BACKUP_TIMEOUT', 3600),
+        // Data tabel ini tidak ikut dibackup (strukturnya tetap): data mentah berumur pendek yang tidak kritis dan besar.
+        'exclude_data' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+            'NETWATCH_BACKUP_EXCLUDE_DATA',
+            'device_heartbeats,process_snapshots,monitor_target_checks,interface_samples,sessions,cache,cache_locks',
+        ))))),
+        // Backup dianggap basi (peringatan di halaman Database) bila lebih tua dari ini (jam).
+        'stale_after_hours' => (int) env('NETWATCH_BACKUP_STALE_HOURS', 36),
+    ],
 
     'force_https' => (bool) env('NETWATCH_FORCE_HTTPS', true),
 

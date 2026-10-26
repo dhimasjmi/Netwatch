@@ -45,6 +45,9 @@ final class EventCatalog
                 .'Bila banyak target mati bersamaan, curigai switch/router di jalur menuju server NetWatch atau server NetWatch itu sendiri. '
                 .'Perangkat yang memblokir ICMP perlu dicek lewat port TCP, bukan ping.'],
             'target.online' => [EventCategory::Connectivity, EventSeverity::Info, null],
+            'backup.failed' => [EventCategory::System, EventSeverity::Critical,
+                'Backup database terjadwal gagal. Lihat pesan galat: biasanya ruang disk kurang, folder backup tidak bisa ditulis, '
+                .'path pg_dump salah (NETWATCH_PG_DUMP), atau kata sandi database berubah. Selama belum diperbaiki, backup terakhir yang berhasil adalah titik pemulihan Anda.'],
             'policy.applied' => [EventCategory::Policy, EventSeverity::Info, null],
             'alert.firing' => [EventCategory::Performance, EventSeverity::Warning,
                 'Pemakaian sumber daya melewati ambang cukup lama. Buka Task Manager lewat perintah daftar proses di halaman perangkat untuk melihat '
