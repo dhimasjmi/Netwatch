@@ -93,15 +93,31 @@ final class TargetMonitorService
             ])->save();
         });
 
-        $this->recordTransition($target, $previous, $decision['status'], $since);
+        $this->recordTransition($target, $previous, $decision['status'], $since, $result->latencyMs);
     }
 
-    private function recordTransition(MonitorTarget $target, TargetStatus $from, TargetStatus $to, ?\Illuminate\Support\Carbon $since): void
+    private function recordTransition(MonitorTarget $target, TargetStatus $from, TargetStatus $to, ?\Illuminate\Support\Carbon $since, ?float $latencyMs): void
     {
         $details = ['target_id' => $target->id, 'name' => $target->name, 'address' => $target->address, 'method' => $target->methodLabel()];
 
         if ($to === TargetStatus::Offline && $from !== TargetStatus::Offline) {
             $this->events->record('target.offline', "{$target->name} ({$target->address}) tidak merespons", null, null, $details);
+
+            return;
+        }
+
+        // Online → Lambat dan Lambat → Online dicatat sebagai event (pertama kali naik dari "belum dicek" tidak).
+        if ($from === TargetStatus::Online && $to === TargetStatus::Warning) {
+            $limit = (int) config('netwatch.monitor.warn_latency_ms');
+            $this->events->record('target.slow', "{$target->name} ({$target->address}) lambat: ".round((float) $latencyMs, 1)." ms (batas {$limit} ms)", null, null,
+                $details + ['latency_ms' => $latencyMs, 'limit_ms' => $limit]);
+
+            return;
+        }
+
+        if ($from === TargetStatus::Warning && $to === TargetStatus::Online) {
+            $this->events->record('target.normal', "{$target->name} ({$target->address}) kembali normal: ".round((float) $latencyMs, 1).' ms', null, null,
+                $details + ['latency_ms' => $latencyMs]);
 
             return;
         }

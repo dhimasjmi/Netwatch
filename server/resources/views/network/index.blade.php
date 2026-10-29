@@ -2,7 +2,7 @@
 
 @section('title', 'Network Operations Center')
 
-@section('main-attrs')data-page="network" data-autoreload data-refresh-seconds="30"@endsection
+@section('main-attrs')data-page="network" data-autoreload data-inplace data-refresh-seconds="30"@endsection
 
 @section('content')
     @include('monitoring.tabs', ['active' => 'network'])
@@ -11,9 +11,54 @@
             <h1>Network Operations Center</h1>
             <p class="muted noc-sub">Pemantauan perangkat jaringan secara real-time (di-ping dari server tiap menit)</p>
         </div>
-        <span class="badge badge-ok">LIVE</span>
+        <div class="actions">
+            <button type="button" class="btn btn-small noc-sound-btn" data-noc-sound-toggle aria-live="polite">🔕 Suara mati</button>
+            <span class="badge badge-ok">LIVE</span>
+        </div>
     </div>
     <p id="refresh-note" class="muted" hidden></p>
+
+    {{-- Daftar target down (tidak terikat filter) untuk alert suara di browser; dibaca network-alert.js. --}}
+    <div id="noc-down" hidden data-down="{{ json_encode($down, JSON_THROW_ON_ERROR) }}"></div>
+
+    <details class="dash-settings kiosk-hide noc-sound-panel" data-no-dirty>
+        <summary>Alert suara</summary>
+        <div class="noc-sound-form">
+            <p class="muted">Berbunyi di browser ini saat ada perangkat jaringan yang down. Pengaturan disimpan di browser ini saja, jadi tiap komputer/TV monitor diatur sendiri. Browser mewajibkan satu klik di halaman ini sebelum boleh berbunyi; halaman harus tetap terbuka.</p>
+            <label class="dash-check"><input type="checkbox" data-noc-sound="enabled"> Aktifkan alert suara</label>
+            <div class="noc-sound-grid">
+                <label>Berbunyi saat
+                    <select data-noc-sound="trigger">
+                        <option value="offline">Perangkat Offline</option>
+                        <option value="both">Offline atau Respons lambat</option>
+                    </select>
+                </label>
+                <label>Nada
+                    <select data-noc-sound="tone">
+                        <option value="siren">Sirene</option>
+                        <option value="beep">Bip</option>
+                        <option value="bell">Lonceng</option>
+                    </select>
+                </label>
+                <label>Pengulangan
+                    <select data-noc-sound="repeat">
+                        <option value="0">Sekali saja</option>
+                        <option value="30">Ulangi tiap 30 detik</option>
+                        <option value="60">Ulangi tiap 1 menit</option>
+                        <option value="300">Ulangi tiap 5 menit</option>
+                    </select>
+                </label>
+                <label>Volume: <output data-noc-sound-volume>70%</output>
+                    <input type="range" min="10" max="100" step="5" data-noc-sound="volume">
+                </label>
+            </div>
+            <label class="dash-check"><input type="checkbox" data-noc-sound="speak"> Ucapkan nama perangkat yang down (suara bawaan browser)</label>
+            <div class="dash-settings-actions">
+                <button type="button" class="btn" data-noc-sound-test>Tes suara</button>
+            </div>
+            <p class="muted" data-noc-sound-note></p>
+        </div>
+    </details>
 
     <section class="cards">
         <div class="card"><div class="card-label">Total perangkat</div><div class="card-value">{{ $total }}</div><div class="muted">Semua target pantau</div></div>
@@ -41,7 +86,7 @@
                 <article class="noc-card noc-{{ $target->is_enabled ? $target->status->value : 'paused' }}">
                     <header class="noc-card-head">
                         <span class="status-dot status-{{ $target->status->value }}" aria-hidden="true"></span>
-                        <strong class="noc-name">{{ $target->name }}</strong>
+                        <strong class="noc-name" title="{{ $target->name }}">{{ $target->name }}</strong>
                         @if ($target->is_enabled)
                             <span class="badge {{ $target->status->badgeClass() }}">{{ strtoupper($target->status->label()) }}</span>
                         @else
@@ -106,3 +151,7 @@
         </div>
     @endcan
 @endsection
+
+@push('scripts')
+    <script src="{{ asset('js/network-alert.js') }}" defer></script>
+@endpush

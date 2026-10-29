@@ -55,10 +55,29 @@ final class NetworkMonitorController extends Controller
             'offline' => (int) ($counts[TargetStatus::Offline->value] ?? 0),
             'slow' => (int) ($counts[TargetStatus::Warning->value] ?? 0),
             'fleetAvailability' => TargetStatusDecider::availability($enabled, $up),
+            'down' => $this->downTargets(),
             'kinds' => TargetKind::cases(),
             'filter' => $filter,
             'search' => $search,
         ]);
+    }
+
+    /**
+     * Target aktif yang sedang offline/lambat, tidak terpengaruh filter halaman. Dipakai alert suara di browser
+     * supaya filter atau pencarian tidak membuat alarm bunyi/diam secara keliru.
+     *
+     * @return list<array{id: int, name: string, status: string}>
+     */
+    private function downTargets(): array
+    {
+        return MonitorTarget::query()
+            ->where('is_enabled', true)
+            ->whereIn('status', [TargetStatus::Offline->value, TargetStatus::Warning->value])
+            ->orderBy('name')
+            ->limit(200)
+            ->get(['id', 'name', 'status'])
+            ->map(fn (MonitorTarget $t): array => ['id' => $t->id, 'name' => $t->name, 'status' => $t->status->value])
+            ->all();
     }
 
     public function store(MonitorTargetRequest $request): RedirectResponse

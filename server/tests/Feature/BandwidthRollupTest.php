@@ -28,7 +28,7 @@ final class BandwidthRollupTest extends TestCase
 
         $device = Device::unguarded(fn () => Device::query()->create([
             'public_id' => (string) \Illuminate\Support\Str::uuid(), 'hostname' => 'PC-RU', 'os_family' => 'windows', 'os_version' => 'W11',
-            'agent_version' => '1.0.0', 'enrolled_at' => now(),
+            'agent_version' => '1.0.0', 'enrolled_at' => now(), 'token_hash' => hash('sha256', 'tes-rollup'),
         ]));
         $this->iface = DeviceInterface::query()->create(['device_id' => $device->id, 'name' => 'Ethernet', 'last_rx_bytes' => 0, 'last_tx_bytes' => 0, 'last_sample_at' => now()]);
     }

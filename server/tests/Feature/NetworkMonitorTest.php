@@ -14,6 +14,7 @@ use App\Services\Probe\ProbeResult;
 use App\Services\Probe\TargetProber;
 use App\Services\RetentionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 final class NetworkMonitorTest extends TestCase
@@ -174,6 +175,152 @@ final class NetworkMonitorTest extends TestCase
 
         $this->actingAs($this->user(UserRole::Admin))->get(route('network.index'))
             ->assertDontSee('<script>alert(1)</script>', false)->assertSee('&lt;script&gt;', false);
+    }
+
+    // ---------- notifikasi Telegram: lambat dan down ----------
+
+    public function test_slow_target_is_sent_to_telegram_only_after_staying_slow_then_normal_notice(): void
+    {
+        $this->telegramOn();
+        $this->travelTo(now()->startOfMinute());
+        $this->target('Core Switch', '192.168.1.1');
+
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 3.0)];
+        $this->artisan('netwatch:ping-targets');
+
+        $this->travel(1)->minutes();
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 400.0)];
+        $this->artisan('netwatch:ping-targets');
+        $this->assertSame(1, Event::query()->where('code', 'target.slow')->count());
+
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+        Http::assertNothingSent(); // baru lambat sebentar: ditahan
+
+        $this->travel(2)->minutes();
+        $this->artisan('netwatch:ping-targets');
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+        Http::assertNothingSent();
+
+        $this->travel(2)->minutes();
+        $this->artisan('netwatch:ping-targets');
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+        Http::assertSentCount(1); // lambat bertahan lebih dari 3 menit: terkirim sekali saja
+        Http::assertSent(fn ($r) => str_contains($r['text'], '🐢') && str_contains($r['text'], 'Core Switch') && str_contains($r['text'], 'lambat: 400') && $r['chat_id'] === '999');
+        $this->assertSame(1, Event::query()->where('code', 'target.slow')->count()); // tidak berulang tiap menit
+
+        $this->travel(1)->minutes();
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 4.0)];
+        $this->artisan('netwatch:ping-targets');
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($r) => str_contains($r['text'], '✅') && str_contains($r['text'], 'kembali normal'));
+    }
+
+    public function test_brief_slowness_that_recovers_before_the_hold_time_is_never_sent(): void
+    {
+        $this->telegramOn();
+        $this->travelTo(now()->startOfMinute());
+        $this->target('Core Switch', '192.168.1.1');
+
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 3.0)];
+        $this->artisan('netwatch:ping-targets');
+        $this->travel(1)->minutes();
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 400.0)];
+        $this->artisan('netwatch:ping-targets');
+        $this->travel(1)->minutes();
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 3.0)];
+        $this->artisan('netwatch:ping-targets');
+
+        $this->travel(5)->minutes();
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+
+        Http::assertNothingSent(); // ucapan "lambat" dilewati, dan "kembali normal" tidak dikirim tanpa kabar lambatnya
+        $this->assertSame(0, Event::query()->whereNull('notified_at')->count());
+    }
+
+    public function test_slow_notice_can_be_switched_off_while_down_notice_still_works(): void
+    {
+        $this->telegramOn();
+        config(['netwatch.alerts.notify_slow' => false]);
+        $this->travelTo(now()->startOfMinute());
+        $this->target('Core Switch', '192.168.1.1');
+        $this->target('Printer', '192.168.1.50');
+
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 3.0), '192.168.1.50' => new ProbeResult(true, 3.0)];
+        $this->artisan('netwatch:ping-targets');
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 400.0)]; // Core lambat, Printer mati
+        foreach (range(1, 6) as $_) {
+            $this->travel(1)->minutes();
+            $this->artisan('netwatch:ping-targets');
+        }
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($r) => str_contains($r['text'], 'Printer') && str_contains($r['text'], 'tidak merespons') && ! str_contains($r['text'], 'Core Switch'));
+    }
+
+    public function test_down_target_goes_to_telegram_and_recovery_only_after_down_notice_was_delivered(): void
+    {
+        $this->telegramOn();
+        $this->travelTo(now()->startOfMinute());
+        $this->target('Core Switch', '192.168.1.1');
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 3.0)];
+        $this->artisan('netwatch:ping-targets');
+
+        $this->responses = [];
+        $this->travel(1)->minutes();
+        $this->artisan('netwatch:ping-targets');
+        $this->travel(1)->minutes();
+        $this->artisan('netwatch:ping-targets');
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($r) => str_contains($r['text'], '🔴') && str_contains($r['text'], 'Core Switch'));
+
+        $this->travel(1)->minutes();
+        $this->responses = ['192.168.1.1' => new ProbeResult(true, 3.0)];
+        $this->artisan('netwatch:ping-targets');
+        $this->artisan('netwatch:send-alerts')->assertSuccessful();
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($r) => str_contains($r['text'], '✅') && str_contains($r['text'], 'merespons kembali'));
+    }
+
+    private function telegramOn(): void
+    {
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true])]);
+        config([
+            'netwatch.alerts.enabled' => true, 'netwatch.alerts.telegram_token' => '123:SECRET', 'netwatch.alerts.telegram_chat_id' => '999',
+            'netwatch.alerts.mail_to' => [], 'netwatch.alerts.notify_slow' => true, 'netwatch.alerts.slow_after_seconds' => 180,
+            'netwatch.alerts.max_age_seconds' => 3600,
+        ]);
+    }
+
+    // ---------- alert suara ----------
+
+    public function test_sound_alert_controls_and_script_are_rendered_for_everyone(): void
+    {
+        $this->actingAs($this->user(UserRole::Viewer))->get(route('network.index'))->assertOk()
+            ->assertSee('data-noc-sound-toggle', false)->assertSee('data-noc-sound="tone"', false)
+            ->assertSee('data-noc-sound="repeat"', false)->assertSee('data-noc-sound="volume"', false)
+            ->assertSee('js/network-alert.js', false)->assertSee('data-inplace', false)
+            ->assertSee('data-down="[]"', false);
+    }
+
+    public function test_down_list_for_sound_alert_ignores_filters_and_skips_online_and_paused_targets(): void
+    {
+        $this->target('Aman', '192.168.1.1', ['status' => 'online']);
+        $this->target('Mati', '192.168.1.2', ['status' => 'offline']);
+        $this->target('Lambat', '192.168.1.3', ['status' => 'warning']);
+        $this->target('Dihentikan', '192.168.1.4', ['status' => 'offline', 'is_enabled' => false]);
+        $this->target('<b>x</b>', '192.168.1.5', ['status' => 'offline']);
+
+        // Filter "online" tidak boleh menyembunyikan target down dari daftar alarm.
+        $this->actingAs($this->user(UserRole::Viewer))->get(route('network.index', ['status' => 'online']))->assertOk()
+            ->assertSee('&quot;name&quot;:&quot;Mati&quot;,&quot;status&quot;:&quot;offline&quot;', false)
+            ->assertSee('&quot;name&quot;:&quot;Lambat&quot;,&quot;status&quot;:&quot;warning&quot;', false)
+            ->assertDontSee('&quot;name&quot;:&quot;Aman&quot;', false)
+            ->assertDontSee('&quot;name&quot;:&quot;Dihentikan&quot;', false)
+            ->assertDontSee('<b>x</b>', false);
     }
 
     // ---------- CRUD ----------

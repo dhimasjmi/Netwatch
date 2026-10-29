@@ -62,11 +62,15 @@ return [
     // Notifikasi (dikirim oleh `netwatch:send-alerts` tiap menit). Kosongkan token/alamat untuk menonaktifkan saluran itu.
     'alerts' => [
         'enabled' => (bool) env('NETWATCH_ALERTS_ENABLED', false),
-        'codes' => ['device.offline', 'device.online', 'alert.firing', 'alert.resolved', 'ticket.created', 'target.offline', 'target.online', 'backup.failed'],
+        'codes' => ['device.offline', 'device.online', 'alert.firing', 'alert.resolved', 'ticket.created', 'target.offline', 'target.online', 'target.slow', 'target.normal', 'backup.failed'],
         // Event yang lebih tua dari ini (detik) tidak lagi dikirim, mis. setelah notifikasi lama tidak aktif.
         'max_age_seconds' => (int) env('NETWATCH_ALERT_MAX_AGE', 3600),
         // Bila sebanyak ini perangkat offline dalam satu kiriman, diringkas menjadi satu pesan.
         'group_threshold' => 5,
+        // Kirim juga kabar "lambat" untuk target jaringan (dan "kembali normal"). Hanya dikirim bila lambat terus-menerus
+        // selama slow_after_seconds, supaya respons yang naik-turun di sekitar batas tidak membanjiri Telegram.
+        'notify_slow' => (bool) env('NETWATCH_ALERT_SLOW', true),
+        'slow_after_seconds' => (int) env('NETWATCH_ALERT_SLOW_AFTER', 180),
         'telegram_token' => env('NETWATCH_TELEGRAM_TOKEN'),
         'telegram_chat_id' => env('NETWATCH_TELEGRAM_CHAT_ID'),
         // Alamat email penerima, pisahkan koma. Pengirim memakai pengaturan MAIL_* Laravel.

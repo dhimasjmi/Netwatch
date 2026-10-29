@@ -21,6 +21,14 @@
    ```
 4. Uji: `php artisan netwatch:test-alert`. Pesan uji harus masuk ke Telegram.
 
+## Jaringan down dan lambat (Monitoring → Jaringan)
+Target jaringan (switch, AP, printer, server) ikut dikirim ke Telegram/email bila `NETWATCH_ALERTS_ENABLED=true`:
+- 🔴 **Down**: dikirim saat target gagal dicek `NETWATCH_MONITOR_FAIL_THRESHOLD` kali beruntun (bawaan 2 menit). Saat pulih dikirim ✅ "merespons kembali" (hanya bila kabar down-nya terkirim).
+- 🐢 **Lambat**: dikirim bila respons lebih lambat dari `NETWATCH_MONITOR_WARN_MS` (bawaan 150 ms) **terus-menerus selama `NETWATCH_ALERT_SLOW_AFTER` detik** (bawaan 180). Respons yang hanya naik-turun sesaat di sekitar batas tidak dikirim. Saat membaik dikirim ✅ "kembali normal" (hanya bila kabar lambatnya terkirim).
+- Matikan kabar lambat saja dengan `NETWATCH_ALERT_SLOW=false`; kabar down tetap jalan.
+- Target yang dihentikan (Stop) tidak dikirim. Satu target yang memburuk dari lambat menjadi down mengirim kabar down saja.
+- Setelah mengubah `.env`: `php artisan config:clear`. Perintah `netwatch:send-alerts` berjalan tiap menit lewat scheduler (lihat di bawah), jadi kabar bisa terlambat sampai ±1 menit setelah status berubah.
+
 Email: isi `MAIL_*` seperti biasa dan `NETWATCH_ALERT_MAIL_TO=a@x.com,b@x.com`.
 
 ## Penjadwal wajib berjalan

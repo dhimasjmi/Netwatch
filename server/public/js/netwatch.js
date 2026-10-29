@@ -262,12 +262,28 @@
         if (message && !window.confirm(message)) event.preventDefault();
     });
 
-    // Menu Administrasi menutup saat klik di luar atau tekan Esc.
-    const navMenu = document.querySelector('details.nav-menu');
-    if (navMenu) {
-        document.addEventListener('click', (e) => { if (!navMenu.contains(e.target)) navMenu.open = false; });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') navMenu.open = false; });
+    // Menu dropdown (Monitoring, Administrasi): hanya satu terbuka; menutup saat klik di luar atau tekan Esc.
+    const navMenus = [...document.querySelectorAll('details.nav-menu')];
+    if (navMenus.length > 0) {
+        const closeAll = (except = null) => navMenus.forEach((m) => { if (m !== except) m.open = false; });
+        navMenus.forEach((menu) => menu.addEventListener('toggle', () => { if (menu.open) closeAll(menu); }));
+        document.addEventListener('click', (e) => { navMenus.forEach((m) => { if (!m.contains(e.target)) m.open = false; }); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
     }
+
+    // Bungkus tabel agar layar sempit atau zoom besar menggulir ke samping, bukan melebar melewati halaman.
+    // Tabel dengan lima kolom atau lebih diberi lebar minimum (kelas table-wide) supaya tidak diperas.
+    function wrapTables(root) {
+        root.querySelectorAll('table.table').forEach((table) => {
+            if (table.closest('.table-wrap, .table-scroll, .mon-table-wrap')) return;
+            const wrap = document.createElement('div');
+            wrap.className = 'table-wrap';
+            table.replaceWith(wrap);
+            wrap.append(table);
+            if (table.querySelectorAll('thead th').length >= 5) table.classList.add('table-wide');
+        });
+    }
+    wrapTables(document);
 
 
     // Ambil ulang halaman ini dan ganti isi <main> (HTML dari server sendiri; diurai sebagai DOM, bukan innerHTML).
@@ -276,7 +292,16 @@
             const response = await fetch(window.location.href, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
             if (!response.ok || response.redirected) { window.location.reload(); return; }
             const next = new DOMParser().parseFromString(await response.text(), 'text/html').getElementById('content');
-            if (next) current.replaceChildren(...[...next.childNodes].map((n) => document.importNode(n, true)));
+            if (next) {
+                // Bagian bertanda [data-no-dirty] (pengaturan alert suara) dipertahankan apa adanya agar fokus,
+                // pilihan, dan keadaan terbukanya tidak hilang tiap pembaruan.
+                const kept = [...current.querySelectorAll('[data-no-dirty]')];
+                current.replaceChildren(...[...next.childNodes].map((n) => document.importNode(n, true)));
+                const fresh = [...current.querySelectorAll('[data-no-dirty]')];
+                if (kept.length === fresh.length) fresh.forEach((node, i) => node.replaceWith(kept[i]));
+                wrapTables(current);
+                document.dispatchEvent(new CustomEvent('nw:refreshed'));
+            }
         } catch { /* coba lagi pada siklus berikutnya */ }
     }
 
@@ -287,7 +312,8 @@
     if (main?.hasAttribute('data-autoreload')) {
         const seconds = Math.max(10, Number(main.dataset.refreshSeconds) || DEFAULT_REFRESH_SECONDS);
         let dirty = false;
-        main.addEventListener('input', () => { dirty = true; });
+        // Kolom di dalam [data-no-dirty] (mis. pengaturan alert suara) tidak menunda pembaruan otomatis.
+        main.addEventListener('input', (e) => { if (!e.target.closest('[data-no-dirty]')) dirty = true; });
 
         const note = document.getElementById('refresh-note');
         if (note) {
@@ -295,15 +321,17 @@
             note.hidden = false;
         }
 
-        const isEditing = () => dirty || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName ?? '');
+        const isEditing = () => dirty || (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName ?? '') && !document.activeElement.closest('[data-no-dirty]'));
         window.setInterval(() => {
-            if (document.hidden) return;
+            // Halaman dengan data-refresh-hidden (Jaringan saat alert suara aktif) tetap diperbarui di tab latar belakang.
+            if (document.hidden && !main.hasAttribute('data-refresh-hidden')) return;
             if (isEditing()) {
                 if (note) note.textContent = 'Pembaruan otomatis ditunda karena Anda sedang mengisi formulir.';
                 return;
             }
-            // Reload menutup layar penuh; saat mode monitor (kiosk), isi halaman diganti tanpa reload.
-            if (document.documentElement.classList.contains('kiosk')) refreshInPlace(main);
+            // Reload menutup layar penuh dan mereset izin suara browser; saat mode monitor (kiosk) atau pada halaman
+            // bertanda data-inplace (Jaringan), isi halaman diganti tanpa reload.
+            if (document.documentElement.classList.contains('kiosk') || main.hasAttribute('data-inplace')) refreshInPlace(main);
             else window.location.reload();
         }, seconds * 1000);
     }

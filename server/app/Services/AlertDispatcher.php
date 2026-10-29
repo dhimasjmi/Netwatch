@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Alerts\AlertChannel;
+use App\Enums\TargetStatus;
 use App\Models\Event;
+use App\Models\MonitorTarget;
 use App\Support\AlertMessage;
 use App\Support\Duration;
 
@@ -48,9 +50,17 @@ final class AlertDispatcher
             return $result;
         }
 
+        $codes = (array) $config['codes'];
+        if (! ($config['notify_slow'] ?? true)) {
+            $codes = array_values(array_diff($codes, ['target.slow', 'target.normal']));
+        }
+        $slowAfter = max(0, (int) ($config['slow_after_seconds'] ?? 0));
+
         $events = Event::query()->with('device')
             ->whereNull('notified_at')
-            ->whereIn('code', (array) $config['codes'])
+            ->whereIn('code', $codes)
+            // Kabar "lambat" ditahan dulu: baru diputuskan setelah lambat bertahan cukup lama (lihat itemFor).
+            ->where(fn ($q) => $q->where('code', '!=', 'target.slow')->orWhere('occurred_at', '<=', now()->subSeconds($slowAfter)))
             ->orderBy('id')->limit(self::BATCH)->get();
 
         $items = [];
@@ -118,6 +128,30 @@ final class AlertDispatcher
 
         if ($event->code === 'target.offline') {
             return ['kind' => 'other', 'text' => '🔴 '.$event->message];
+        }
+
+        if ($event->code === 'target.slow') {
+            $target = MonitorTarget::query()->find($event->details['target_id'] ?? 0);
+            $holdSeconds = max(0, (int) config('netwatch.alerts.slow_after_seconds'));
+
+            // Hanya bila masih lambat dan sudah lambat terus-menerus; yang sempat pulih/offline/dihentikan dilewati.
+            if ($target === null || ! $target->is_enabled || $target->status !== TargetStatus::Warning
+                || $target->status_since === null || $target->status_since->gt(now()->subSeconds($holdSeconds))) {
+                return null;
+            }
+
+            $text = "{$target->name} ({$target->address}) lambat: ".round((float) $target->latency_ms, 1).' ms (batas '
+                .(int) config('netwatch.monitor.warn_latency_ms').' ms) sejak '.$target->status_since->toDisplay();
+
+            return ['kind' => 'other', 'text' => '🐢 '.$text];
+        }
+
+        if ($event->code === 'target.normal') {
+            // Kabar "kembali normal" hanya berarti bila kabar "lambat"-nya dulu benar-benar terkirim.
+            $slowWasSent = Event::query()->where('code', 'target.slow')->where('details->target_id', $event->details['target_id'] ?? 0)
+                ->where('id', '<', $event->id)->orderByDesc('id')->value('notification_sent');
+
+            return $slowWasSent ? ['kind' => 'other', 'text' => '✅ '.$event->message] : null;
         }
 
         if ($event->code === 'target.online') {

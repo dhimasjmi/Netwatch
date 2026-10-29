@@ -19,7 +19,8 @@ Perangkat ber-agent tetap dipantau lewat heartbeat di menu Perangkat; kedua jeni
 | Belum dicek | Target baru atau baru diubah |
 
 Saat target berubah menjadi Offline dan saat pulih, server mencatat event (`target.offline` / `target.online`, kategori Konektivitas) dengan lama gangguan.
-Bila notifikasi Telegram/email aktif, kabar itu ikut terkirim; kabar "pulih" hanya dikirim bila kabar "offline"-nya dulu terkirim.
+Target yang berubah dari Online ke Lambat (dan kembali) juga dicatat sebagai event `target.slow` / `target.normal`.
+Bila notifikasi Telegram/email aktif, kabar down dan lambat ikut terkirim (lambat hanya bila bertahan `NETWATCH_ALERT_SLOW_AFTER` detik, bawaan 180); kabar "pulih" hanya dikirim bila kabar gangguannya dulu terkirim. Lihat `docs/NOTIFIKASI.md`.
 
 ## Keamanan dan batasan
 - Hanya **alamat IP** (bukan nama host). Loopback, 0.0.0.0, dan multicast ditolak.
