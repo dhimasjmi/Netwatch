@@ -105,11 +105,3 @@ PostgreSQL saja; blokir hanya Windows; pesan layar butuh `msg.exe` (bukan Window
 | FR-6 | S6 | `TicketFlowTest`, `FeedbackCodeTest` |
 | FR-7 | S1/S7/S8/S10 | `DashboardAccessTest`, `UserManagementTest`, `FeatureFlagsTest`, `SecurityCheckTest`, `DatabaseHealthTest`, `PgDumpCommandTest`, `BackupRetentionTest`, `BrowsingRollupTest`, `BandwidthRollupTest` |
 
-## 8. Status verifikasi (jujur)
-- Tes agent (`php agent/tests/run.php`): **107 lulus** di sandbox.
-- Tes server (PHPUnit): **tidak dapat dijalankan di sandbox** (tanpa `vendor`). Dijalankan oleh pemilik di Laragon dengan `vendor\bin\phpunit`; tes baru untuk dukungan schema (`PgDumpCommandTest`, `DatabaseHealthTest`, tes NOC suara) **belum pernah dijalankan**.
-- `DEPLOY-LINUX.md` belum pernah dieksekusi di Ubuntu/Debian nyata; kombinasi PostgreSQL 14.21 + `pg_restore` 16 belum diuji.
-- UI diuji secara statis di Chromium, bukan dengan data produksi.
-
-## 9. Di luar lingkup saat ini
-Penerapan blokir di Linux; instalasi agent tanpa PHP; high availability; SSO/LDAP; notifikasi selain Telegram/email.
