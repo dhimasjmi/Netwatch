@@ -19,6 +19,23 @@ Semua perintah dijalankan dari user biasa yang bisa `sudo` (di panduan ini: `dep
 
 Catat dua nilai ini, dipakai berulang: **`NAMA_SERVER`** (mis. `netwatch.perusahaan.local`) dan **`IP_SERVER`** (mis. `172.21.110.14`).
 
+### 0b. Model database: lokal atau server pusat bersama
+
+Panduan ini secara bawaan memasang **PostgreSQL di server yang sama** (Bagian 2–3). Jika NetWatch harus memakai **database di server pusat yang juga dipakai aplikasi lain** (satu database, dipisah schema `netwatch`), pakai varian di bawah dan ikuti **`docs/MERGE-DATABASE.md`** untuk sisi database.
+
+| Bagian | Database lokal (bawaan) | Database server pusat (schema `netwatch`) |
+|---|---|---|
+| 0 | — | Putuskan jalur A (baru) atau B (bawa data pilot) di `MERGE-DATABASE.md` Bagian 0. |
+| (sebelum 1) | — | Pengelola server pusat mengerjakan `MERGE-DATABASE.md` Bagian 1–3 (role, schema, `pg_hba.conf`, SSL, firewall). |
+| 2 | Pasang `postgresql postgresql-contrib` | **Jangan** pasang server PostgreSQL. Pasang klien saja: `sudo apt install -y postgresql-client-16` (klien boleh lebih baru dari server, tidak boleh lebih lama). Paket lain (nginx, PHP, composer, iputils-ping) tetap. |
+| 3 | Buat database + `netwatch.conf` | **Lewati seluruhnya.** `deploy/postgresql/netwatch.conf` tidak boleh dipasang di server bersama (lihat `MERGE-DATABASE.md` Bagian 9). |
+| 5 | `DB_HOST=127.0.0.1` | `DB_HOST=DB_SERVER`, `DB_DATABASE=NAMA_DB`, `DB_USERNAME=netwatch`, `DB_SCHEMA=netwatch`, `DB_SSLMODE=require`. |
+| 6 | `migrate --force` langsung | Pastikan `.env` berisi `DB_SCHEMA=netwatch` dulu (kode mendukungnya sejak rilis 29 Okt 2026); Jalur B memulihkan data dulu (Bagian 6 di sana). |
+| 10 | Port 5432 tidak dibuka | Server NetWatch **tidak** membuka 5432 ke mana pun. Yang membuka 5432 adalah **server database**, hanya dari `IP_NETWATCH`. Pastikan keluar (outbound) ke `DB_SERVER:5432` tidak diblokir. |
+| 12 | Verifikasi akhir | Tambahkan pemeriksaan `diff` daftar tabel dan arsip backup tanpa schema lain (`MERGE-DATABASE.md` Bagian 7). |
+
+Backup tetap berjalan dari server NetWatch lewat `pg_dump` jarak jauh, jadi `postgresql-client-16` harus terpasang sebelum Bagian 9.
+
 ---
 
 ## 1. Siapkan sistem operasi
@@ -49,6 +66,8 @@ sudo -u www-data ping -c1 127.0.0.1                  # berhasil: user web boleh 
 ```
 
 ## 3. Buat database
+
+> **Database di server pusat bersama? Lewati bagian ini** dan ikuti `docs/MERGE-DATABASE.md` (lihat tabel di Bagian 0b).
 
 ```bash
 sudo -u postgres psql <<'SQL'
@@ -281,6 +300,7 @@ Pemeliharaan rutin lain: lihat `docs/KEAMANAN.md` (pemeriksaan mingguan, `apt up
 | "Ping perangkat" selalu gagal | `iputils-ping` belum terpasang atau firewall mem-blokir ICMP keluar. Tes: `sudo -u www-data ping -c1 IP`. |
 | Halaman Database & Backup menampilkan "Pembersihan tertinggal" | Penjadwal belum jalan ≥ 1 hari, atau `netwatch:prune` gagal: jalankan manual dan baca pesannya. |
 | `pg_dump` tidak ditemukan saat backup | `sudo apt install postgresql-client-16` atau set `NETWATCH_PG_DUMP=/usr/lib/postgresql/16/bin/pg_dump`. |
+| Database di server pusat: koneksi ditolak / tabel muncul di schema `public` / `pg_restore` gagal | Lihat tabel "Masalah umum" di `docs/MERGE-DATABASE.md` Bagian 11. |
 
 ## Daftar periksa go-live
 
@@ -289,11 +309,12 @@ Pemeliharaan rutin lain: lihat `docs/KEAMANAN.md` (pemeriksaan mingguan, `apt up
 - [ ] `.env`: `APP_ENV=production`, `APP_DEBUG=false`; salinan `.env` tersimpan di luar server.
 - [ ] Penjadwal berjalan (`schedule:list`, event "backup" tidak gagal).
 - [ ] Backup pertama dibuat, **diverifikasi, dan salinan kedua ada**; latihan pemulihan sudah dilakukan sekali.
-- [ ] Firewall: hanya 22/80/443 dari subnet yang diizinkan; 5432 tertutup.
+- [ ] Firewall: hanya 22/80/443 dari subnet yang diizinkan; 5432 tertutup. (Database di server pusat: 5432 di **server database** hanya terbuka dari `IP_NETWATCH`, daftar periksa lengkap di `docs/MERGE-DATABASE.md` Bagian 12.)
 - [ ] Dua admin aktif; token pendaftaran lama dicabut.
 - [ ] 1 PC pilot Online dan menampilkan data bandwidth/event; baru kemudian penyebaran massal.
 
 ## Dokumen terkait
 - `docs/BACKUP-DATABASE.md` — backup otomatis, pemulihan, latihan pemulihan.
+- `docs/MERGE-DATABASE.md` — memakai database bersama di server pusat (satu database, beda schema), termasuk memindahkan data pilot.
 - `docs/BASIS-DATA.md` — perkiraan ukuran database, pemeliharaan jangka panjang, menyesuaikan retensi.
 - `docs/PENYEBARAN-AGENT.md` — memasang agent di PC.

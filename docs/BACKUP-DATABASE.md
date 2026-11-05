@@ -31,6 +31,13 @@ sudo -u www-data php artisan netwatch:backup --verify=NAMA_ATAU_PATH   # periksa
 sudo -u www-data php artisan netwatch:db-stats                         # ukuran tabel, retensi, status backup
 ```
 
+## Jika database dipakai bersama aplikasi lain (schema `netwatch`)
+Bagian lain dokumen ini menganggap satu database khusus NetWatch di schema `public`. Bila NetWatch digabung ke database bersama (`docs/MERGE-DATABASE.md`), perbedaannya:
+- Backup hanya memuat schema yang diisi di `DB_SCHEMA` (aplikasi lain tidak ikut) dan data mentah tetap dilewati. Ini otomatis; pada pemasangan lokal (`DB_SCHEMA=public`, bawaan) perilakunya sama seperti sebelumnya.
+- Pemulihan bukan `DROP DATABASE`, melainkan mengosongkan **hanya schema `netwatch`** dan memulihkannya dengan daftar yang menyaring baris `CREATE SCHEMA`. Langkah lengkap (diuji) ada di `MERGE-DATABASE.md` Bagian 8.
+- `pg_restore` harus **versi yang sama atau lebih baru** dari `pg_dump` yang membuat berkas, dan `pg_dump` tidak boleh lebih lama dari server database.
+- Memulihkan satu tabel: tambahkan `--schema=netwatch` dan lakukan di database sementara.
+
 ## Yang harus disimpan terpisah dari database
 1. **`server/.env`** (berisi `APP_KEY` dan sandi database). Simpan salinannya di pengelola sandi/brankas, bukan hanya di server.
 2. **Sertifikat TLS** (`/etc/ssl/netwatch/`) dan CA yang dibagikan ke agent.
@@ -96,3 +103,4 @@ Backup yang belum pernah dipulihkan belum bisa dianggap aman.
 | `Folder backup tidak bisa ditulis` | `sudo chown www-data:www-data /var/backups/netwatch`. |
 | `salinan kedua gagal` | Cek mount/share dan izin tulis `www-data`; backup utama tetap berhasil. |
 | `pg_dump gagal ... version mismatch` | Versi `pg_dump` harus ≥ versi server PostgreSQL; samakan paket klien. |
+| `pg_restore: unsupported version (1.15) in file header` | `pg_restore` lebih lama dari `pg_dump` pembuat berkas (mis. dump dari PostgreSQL 16, restore dengan klien 14). Pakai `pg_restore` 16. |
